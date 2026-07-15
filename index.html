@@ -138,13 +138,13 @@
    isn't filled in yet.
    ========================================================================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyA--tG_eC-Bu5Msgg7v-YqTxkbChCoQvgI",
-  authDomain: "huddle-36725.firebaseapp.com",
-  databaseURL: "https://huddle-36725-default-rtdb.firebaseio.com",
-  projectId: "huddle-36725",
-  storageBucket: "huddle-36725.firebasestorage.app",
-  messagingSenderId: "144620499129",
-  appId: "1:144620499129:web:89f84c0aa3c15d18d9ab68"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 /* ========================================================================= */
 
@@ -366,12 +366,16 @@ async function joinRoom(){
   if(!meta){ session.err='No room found with that code. Double check with your host.'; render(); return; }
   session.meta = meta; session.code = code; session.name = name;
   session.hourStart=meta.hourStart; session.hourEnd=meta.hourEnd; session.stepMinutes=meta.stepMinutes;
-  session.tz = document.getElementById('jn-tz').value;
+  
+  // Respect the timezone the user just selected in the join form (this was the main bug)
+  session.tz = document.getElementById('jn-tz').value || detectedTz;
+  
   session.members = await loadMembers(code);
   const mine = session.members.find(m=>m.normKey===normName(name));
   session.mySlots = new Set(mine? mine.slots : []);
-  // Intentionally NOT falling back to mine.tz — whatever the person just
-  // picked in the dropdown always wins over any previously saved value.
+  // Removed override of session.tz with saved mine.tz — we now honor the user's explicit selection
+  // The saved tz will be updated when they save their availability
+  
   session.err=''; session.view='dashboard';
   render(); startLiveSync(code);
 }
@@ -583,7 +587,7 @@ function renderCreate(){
       <label>Your name</label>
       <input type="text" id="cr-name" placeholder="e.g. Nayan">
       <label>What's this meeting about? <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
-      <input type="text" id="cr-roomname" placeholder="e.g. Officer Meeting">
+      <input type="text" id="cr-roomname" placeholder="e.g. Capstone project sync">
       <label>Your timezone</label>
       <select id="cr-tz">${tzOptions(detectedTz)}</select>
       <label>Starting date</label>
@@ -606,6 +610,8 @@ function renderCreate(){
   </div>`;
 }
 function renderJoin(){
+  // Use previously saved tz (for returning users) or detected as default
+  const defaultJoinTz = session.tz || detectedTz;
   return `<div class="view">
     ${brandHeader()}
     <div class="card">
@@ -616,7 +622,7 @@ function renderJoin(){
       <label>Room code</label>
       <input type="text" id="jn-code" placeholder="e.g. K7QX2M" style="text-transform:uppercase;letter-spacing:.06em;" value="${session.code}">
       <label>Your timezone</label>
-      <select id="jn-tz">${tzOptions(detectedTz)}</select>
+      <select id="jn-tz">${tzOptions(defaultJoinTz)}</select>
       ${session.err?`<div class="msg-err">${session.err}</div>`:''}
       <div style="margin-top:18px;"><button class="btn-primary" onclick="joinRoom()" ${session.busy?'disabled':''}>${session.busy?'Looking for room…':'Join room'}</button></div>
       <div style="margin-top:10px;"><button class="btn-ghost" onclick="session.view='home';render()">← Back</button></div>
