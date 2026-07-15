@@ -366,16 +366,11 @@ async function joinRoom(){
   if(!meta){ session.err='No room found with that code. Double check with your host.'; render(); return; }
   session.meta = meta; session.code = code; session.name = name;
   session.hourStart=meta.hourStart; session.hourEnd=meta.hourEnd; session.stepMinutes=meta.stepMinutes;
-  // session.tz = document.getElementById('jn-tz').value;
-  // session.members = await loadMembers(code);
-  // const mine = session.members.find(m=>m.normKey===normName(name));
-  // session.mySlots = new Set(mine? mine.slots : []);
-  // if(mine && mine.tz) session.tz = mine.tz;
   session.tz = document.getElementById('jn-tz').value;
   session.members = await loadMembers(code);
   const mine = session.members.find(m=>m.normKey===normName(name));
   session.mySlots = new Set(mine? mine.slots : []);
-  
+  if(mine && mine.tz) session.tz = mine.tz;
   session.err=''; session.view='dashboard';
   render(); startLiveSync(code);
 }
