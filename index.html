@@ -366,16 +366,11 @@ async function joinRoom(){
   if(!meta){ session.err='No room found with that code. Double check with your host.'; render(); return; }
   session.meta = meta; session.code = code; session.name = name;
   session.hourStart=meta.hourStart; session.hourEnd=meta.hourEnd; session.stepMinutes=meta.stepMinutes;
-  
-  // Respect the timezone the user just selected in the join form (this was the main bug)
-  session.tz = document.getElementById('jn-tz').value || detectedTz;
-  
+  session.tz = document.getElementById('jn-tz').value;
   session.members = await loadMembers(code);
   const mine = session.members.find(m=>m.normKey===normName(name));
   session.mySlots = new Set(mine? mine.slots : []);
-  // Removed override of session.tz with saved mine.tz — we now honor the user's explicit selection
-  // The saved tz will be updated when they save their availability
-  
+  if(mine && mine.tz) session.tz = mine.tz;
   session.err=''; session.view='dashboard';
   render(); startLiveSync(code);
 }
@@ -610,8 +605,6 @@ function renderCreate(){
   </div>`;
 }
 function renderJoin(){
-  // Use previously saved tz (for returning users) or detected as default
-  const defaultJoinTz = session.tz || detectedTz;
   return `<div class="view">
     ${brandHeader()}
     <div class="card">
@@ -622,7 +615,7 @@ function renderJoin(){
       <label>Room code</label>
       <input type="text" id="jn-code" placeholder="e.g. K7QX2M" style="text-transform:uppercase;letter-spacing:.06em;" value="${session.code}">
       <label>Your timezone</label>
-      <select id="jn-tz">${tzOptions(defaultJoinTz)}</select>
+      <select id="jn-tz">${tzOptions(detectedTz)}</select>
       ${session.err?`<div class="msg-err">${session.err}</div>`:''}
       <div style="margin-top:18px;"><button class="btn-primary" onclick="joinRoom()" ${session.busy?'disabled':''}>${session.busy?'Looking for room…':'Join room'}</button></div>
       <div style="margin-top:10px;"><button class="btn-ghost" onclick="session.view='home';render()">← Back</button></div>
