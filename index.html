@@ -370,7 +370,8 @@ async function joinRoom(){
   session.members = await loadMembers(code);
   const mine = session.members.find(m=>m.normKey===normName(name));
   session.mySlots = new Set(mine? mine.slots : []);
-  if(mine && mine.tz) session.tz = mine.tz;
+  // Intentionally NOT falling back to mine.tz — whatever the person just
+  // picked in the dropdown always wins over any previously saved value.
   session.err=''; session.view='dashboard';
   render(); startLiveSync(code);
 }
