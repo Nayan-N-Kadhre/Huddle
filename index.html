@@ -90,12 +90,27 @@
   .legend{display:flex;gap:16px;align-items:center;font-size:12px;color:var(--muted);margin-top:10px;}
   .legend span{display:inline-flex;align-items:center;gap:6px;}
   .sw{width:14px;height:14px;border-radius:4px;display:inline-block;}
-  .result-row{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1.5px solid var(--pink-line);
+  .result-row{display:flex;justify-content:space-between;align-items:flex-start;padding:12px 14px;border:1.5px solid var(--pink-line);
     border-radius:10px;margin-bottom:8px;background:#fff;transition:border-color .15s;}
   .result-row:hover{border-color:var(--pink);}
   .result-row .rt{font-weight:700;font-size:14.5px;}
   .result-row .rm{font-size:12px;color:var(--muted);margin-top:2px;}
-  .result-row .rc{font-size:12.5px;color:var(--success);font-weight:700;}
+  .result-row .rc{font-size:12.5px;color:var(--success);font-weight:700;padding-top:1px;flex:none;margin-left:12px;}
+  .tzchip{font-weight:500;font-size:11.5px;color:var(--muted);}
+  details.tz-details{margin-top:8px;}
+  details.tz-details summary{cursor:pointer;font-size:12px;color:var(--pink-dark);font-weight:600;list-style:none;user-select:none;}
+  details.tz-details summary::-webkit-details-marker{display:none;}
+  details.tz-details summary::before{content:'▸';display:inline-block;margin-right:4px;transition:transform .15s ease;}
+  details.tz-details[open] summary::before{transform:rotate(90deg);}
+  .tz-breakdown{margin-top:8px;border-top:1px dashed var(--pink-line);padding-top:8px;display:flex;flex-direction:column;gap:3px;}
+  .tz-row{display:flex;align-items:center;gap:8px;font-size:12.5px;}
+  .tz-row-name{font-weight:600;min-width:78px;}
+  .tz-row-time{color:var(--text);}
+  .tz-row-zone{color:var(--muted);font-size:11.5px;margin-left:auto;}
+  .banner details.tz-details summary{color:#fff;opacity:.9;}
+  .banner .tz-breakdown{border-top-color:rgba(255,255,255,0.35);}
+  .banner .tz-row-name,.banner .tz-row-time{color:#fff;}
+  .banner .tz-row-zone{color:rgba(255,255,255,0.75);}
   .toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;
     padding:11px 18px;border-radius:999px;font-size:13.5px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,0.2);
     animation:pulseIn .25s ease;z-index:50;}
@@ -103,7 +118,10 @@
   .divider{height:1px;background:var(--pink-line);margin:18px 0;}
   .small-btn{padding:8px 14px;font-size:13px;}
   a.linklike{color:var(--pink-dark);cursor:pointer;font-weight:600;}
-  .radio-row{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1.5px solid var(--pink-line);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:border-color .15s;}
+  .radio-row{display:flex;align-items:flex-start;gap:10px;padding:11px 12px;border:1.5px solid var(--pink-line);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:border-color .15s;}
+  .radio-row .radio-dot{margin-top:3px;}
+  .radio-row > div:nth-child(2){flex:1;}
+  .radio-row .vote-tally{flex:none;padding-top:2px;}
   .radio-row:hover{border-color:var(--pink);}
   .radio-row.checked{border-color:var(--pink);background:var(--pink-soft2);}
   .radio-dot{width:16px;height:16px;border-radius:50%;border:2px solid var(--pink-line);flex:none;position:relative;}
@@ -138,13 +156,13 @@
    isn't filled in yet.
    ========================================================================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyA--tG_eC-Bu5Msgg7v-YqTxkbChCoQvgI",
-  authDomain: "huddle-36725.firebaseapp.com",
-  databaseURL: "https://huddle-36725-default-rtdb.firebaseio.com",
-  projectId: "huddle-36725",
-  storageBucket: "huddle-36725.firebasestorage.app",
-  messagingSenderId: "144620499129",
-  appId: "1:144620499129:web:89f84c0aa3c15d18d9ab68"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 /* ========================================================================= */
 
@@ -244,6 +262,17 @@ function formatLocal(iso, tz){
 }
 function tzLabel(tz){ const f=TIMEZONES.find(t=>t.tz===tz); return f?f.label:tz; }
 function isoKey(iso){ return iso.replace(/[.#$\[\]\/:]/g,'_'); } // Firebase keys can't hold ":" either
+function perMemberTimesHTML(iso, members){
+  if(!members || !members.length) return '<div class="tz-row" style="color:var(--muted)">No responses yet.</div>';
+  return members.map(m=>{
+    return `<div class="tz-row"><span class="tz-row-name">${m.displayName}</span><span class="tz-row-time">${formatLocal(iso, m.tz)}</span><span class="tz-row-zone">${tzLabel(m.tz)}</span></div>`;
+  }).join('');
+}
+function tzCompareBlock(iso, members){
+  return `<details class="tz-details"><summary>Compare times across everyone's timezone</summary>
+    <div class="tz-breakdown">${perMemberTimesHTML(iso, members)}</div>
+  </details>`;
+}
 
 /* ---------------- storage layer (Firebase Realtime Database) ---------------- */
 async function loadMeta(code){
@@ -662,6 +691,9 @@ function bannerFragment(){
     <div class="lbl">📅 Upcoming meeting · ${meta.roomName}</div>
     <div class="time">${formatLocal(f.slotISO, session.tz)} <span style="font-weight:400;font-size:13px;opacity:.85">(${tzLabel(session.tz)})</span></div>
     ${f.missing && f.missing.length? `<div class="miss">Can't make it: ${f.missing.join(', ')}</div>` : `<div class="miss">Everyone's confirmed available ✓</div>`}
+    <details class="tz-details tz-details-banner" open><summary>Compare times across everyone's timezone</summary>
+      <div class="tz-breakdown">${perMemberTimesHTML(f.slotISO, session.members)}</div>
+    </details>
   </div>`;
 }
 function votingFragment(){
@@ -676,7 +708,8 @@ function votingFragment(){
     ${meta.votingOptions.map(iso=>`
       <div class="radio-row ${myVote===iso?'checked':''}" onclick="castVote('${iso}')">
         <div class="radio-dot"></div>
-        <div>${formatLocal(iso, session.tz)}</div>
+        <div><div>${formatLocal(iso, session.tz)} <span class="tzchip">${tzLabel(session.tz)}</span></div>
+        <div onclick="event.stopPropagation()">${tzCompareBlock(iso, session.members)}</div></div>
         <div class="vote-tally">${tally[iso]||0} vote${(tally[iso]||0)===1?'':'s'}</div>
       </div>`).join('')}
     <div style="margin-top:12px;"><button class="btn-secondary" onclick="finalizeVote()">Finalize with current votes</button></div>
@@ -692,8 +725,10 @@ function resultsFragment(){
   const rowsHTML = best.best.map(iso=>{
     const missing = best.missingByIso[iso]||[];
     return `<div class="result-row">
-      <div><div class="rt">${formatLocal(iso, session.tz)}</div>
-      <div class="rm">${missing.length? `Can't make it: ${missing.join(', ')}` : 'Everyone can make it'}</div></div>
+      <div><div class="rt">${formatLocal(iso, session.tz)} <span class="tzchip">${tzLabel(session.tz)}</span></div>
+      <div class="rm">${missing.length? `Can't make it: ${missing.join(', ')}` : 'Everyone can make it'}</div>
+      ${tzCompareBlock(iso, session.members)}
+      </div>
       <div class="rc">${best.total-missing.length}/${best.total}</div>
     </div>`;
   }).join('');
