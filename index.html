@@ -156,13 +156,13 @@
    isn't filled in yet.
    ========================================================================= */
 const firebaseConfig = {
-  apiKey: "AIzaSyA--tG_eC-Bu5Msgg7v-YqTxkbChCoQvgI",
-  authDomain: "huddle-36725.firebaseapp.com",
-  databaseURL: "https://huddle-36725-default-rtdb.firebaseio.com",
-  projectId: "huddle-36725",
-  storageBucket: "huddle-36725.firebasestorage.app",
-  messagingSenderId: "144620499129",
-  appId: "1:144620499129:web:89f84c0aa3c15d18d9ab68"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.firebaseio.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 /* ========================================================================= */
 
@@ -214,7 +214,7 @@ const detectedTz = (()=>{ try{return Intl.DateTimeFormat().resolvedOptions().tim
 let session = {
   view: isFirebaseConfigured() ? 'home' : 'setup',
   name:'', code:'', tz:detectedTz,
-  meta:null, members:[], mySlots:new Set(),
+  meta:null, members:[], presence:[], mySlots:new Set(),
   hourStart:8, hourEnd:20, stepMinutes:60, roomName:'',
   err:'', busy:false
 };
@@ -305,6 +305,31 @@ async function saveMember(code, normKey, data){
   try{ await db.ref('rooms/'+code+'/members/'+safeKey(normKey)).set(data); return true; }
   catch(e){ console.error(e); return false; }
 }
+// Presence is separate from members: it records "this person has joined and
+// is using this timezone" the moment someone joins the room, even before
+// they've submitted (or without ever submitting) their availability. This
+// lets a finalized meeting show a correct time for latecomers too, without
+// making them count as having "responded" for the best-times calculation.
+async function loadPresence(code){
+  try{
+    const snap = await db.ref('rooms/'+code+'/presence').once('value');
+    if(!snap.exists()) return [];
+    return Object.values(snap.val());
+  }catch(e){ console.error(e); return []; }
+}
+async function savePresence(code, normKey, data){
+  try{ await db.ref('rooms/'+code+'/presence/'+safeKey(normKey)).set(data); return true; }
+  catch(e){ console.error(e); return false; }
+}
+// Merge members (people who've submitted availability) with presence
+// (anyone who's ever joined) so timezone displays can include everyone,
+// while "Who's responded" keeps using session.members alone.
+function allKnownMembers(){
+  const map = {};
+  (session.presence||[]).forEach(p=>{ map[p.normKey] = p; });
+  (session.members||[]).forEach(m=>{ map[m.normKey] = m; }); // members data wins if both exist
+  return Object.values(map);
+}
 
 // Live sync: replaces polling entirely. Firebase pushes updates the instant
 // any member (anywhere) changes the room, so everyone's view stays current
@@ -318,6 +343,7 @@ function startLiveSync(code){
     const val = snapshot.val();
     if(val.meta) session.meta = val.meta;
     session.members = val.members ? Object.values(val.members) : [];
+    session.presence = val.presence ? Object.values(val.presence) : [];
     patchDashboard();
   });
 }
@@ -379,6 +405,9 @@ async function createRoom(){
   session.hourStart=hourStart; session.hourEnd=hourEnd; session.stepMinutes=stepMinutes;
   session.tz = document.getElementById('cr-tz').value;
   session.mySlots = new Set();
+  const normKey = normName(name);
+  await savePresence(code, normKey, {normKey, displayName:name.trim(), tz:session.tz, lastSeen:Date.now()});
+  session.presence = await loadPresence(code);
   session.err=''; session.view='dashboard';
   session.members = await loadMembers(code);
   render(); startLiveSync(code);
@@ -402,6 +431,9 @@ async function joinRoom(){
   session.mySlots = new Set(mine? mine.slots : []);
   // NOT falling back to mine.tz — whatever the person just picked in the
   // dropdown always wins over any previously saved value for that name.
+  const normKey = normName(name);
+  await savePresence(code, normKey, {normKey, displayName:name.trim(), tz:chosenTz, lastSeen:Date.now()});
+  session.presence = await loadPresence(code);
   session.err=''; session.view='dashboard';
   render(); startLiveSync(code);
 }
@@ -460,8 +492,10 @@ async function refreshRoom(){
   if(!session.code) return;
   const meta = await loadMeta(session.code);
   const members = await loadMembers(session.code);
+  const presence = await loadPresence(session.code);
   if(meta) session.meta = meta;
   session.members = members;
+  session.presence = presence;
   if(!patchDashboard()) render();
 }
 async function beginVoteOrFinalize(){
@@ -683,6 +717,9 @@ function buildGridHTML(){
   <div class="legend"><span><span class="sw" style="background:var(--pink-soft2);border:1px solid var(--pink-line)"></span>Free</span>
   <span><span class="sw" style="background:var(--pink)"></span>Selected</span></div>`;
 }
+function isHost(){
+  return !!(session.meta && session.name && normName(session.name)===normName(session.meta.hostName));
+}
 function bannerFragment(){
   const meta = session.meta;
   if(!meta.finalized) return '';
@@ -692,7 +729,7 @@ function bannerFragment(){
     <div class="time">${formatLocal(f.slotISO, session.tz)} <span style="font-weight:400;font-size:13px;opacity:.85">(${tzLabel(session.tz)})</span></div>
     ${f.missing && f.missing.length? `<div class="miss">Can't make it: ${f.missing.join(', ')}</div>` : `<div class="miss">Everyone's confirmed available ✓</div>`}
     <details class="tz-details tz-details-banner" open><summary>Compare times across everyone's timezone</summary>
-      <div class="tz-breakdown">${perMemberTimesHTML(f.slotISO, session.members)}</div>
+      <div class="tz-breakdown">${perMemberTimesHTML(f.slotISO, allKnownMembers())}</div>
     </details>
   </div>`;
 }
@@ -712,7 +749,9 @@ function votingFragment(){
         <div onclick="event.stopPropagation()">${tzCompareBlock(iso, session.members)}</div></div>
         <div class="vote-tally">${tally[iso]||0} vote${(tally[iso]||0)===1?'':'s'}</div>
       </div>`).join('')}
-    <div style="margin-top:12px;"><button class="btn-secondary" onclick="finalizeVote()">Finalize with current votes</button></div>
+    <div style="margin-top:12px;">${isHost()
+      ? `<button class="btn-secondary" onclick="finalizeVote()">Finalize with current votes</button>`
+      : `<div class="helptext">Waiting for ${meta.hostName} (the host) to finalize a time.</div>`}</div>
   </div>`;
 }
 function resultsFragment(){
@@ -738,7 +777,9 @@ function resultsFragment(){
     <p class="sub">${best.unanimous? 'Everyone is free at these times 🎉' : "No time works for everyone yet — here's the closest match:"}</p>
     ${rowsHTML}
     ${tieNote}
-    <div style="margin-top:10px;"><button class="btn-primary" onclick="beginVoteOrFinalize()">${best.best.length>1? 'Start vote' : 'Confirm this time'}</button></div>
+    <div style="margin-top:10px;">${isHost()
+      ? `<button class="btn-primary" onclick="beginVoteOrFinalize()">${best.best.length>1? 'Start vote' : 'Confirm this time'}</button>`
+      : `<div class="helptext">Waiting for ${meta.hostName} (the host) to ${best.best.length>1?'start a vote':'confirm this time'}.</div>`}</div>
   </div>`;
 }
 function membersFragment(){
@@ -808,7 +849,12 @@ function openTzPicker(){
   if(holder.innerHTML){ holder.innerHTML=''; return; }
   holder.innerHTML = `<select id="dash-tz" onchange="changeTz(this.value)" style="margin-bottom:12px;">${tzOptions(session.tz)}</select>`;
 }
-function changeTz(tz){ session.tz = tz; render(); }
+function changeTz(tz){
+  session.tz = tz;
+  render();
+  const normKey = normName(session.name);
+  savePresence(session.code, normKey, {normKey, displayName:session.name.trim(), tz, lastSeen:Date.now()});
+}
 
 render();
 </script>
